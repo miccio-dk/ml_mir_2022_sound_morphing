@@ -7,8 +7,7 @@
 ## Usage
 ```sh
 # train
-cd src
-python train.py
+python src/train.py
 ```
 
 
