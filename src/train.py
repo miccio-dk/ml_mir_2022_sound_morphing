@@ -11,6 +11,9 @@ from dataset import NsynthDataset
 from model import VaeModel
 from loss import VaeLoss
 
+# Update - New Models
+# from models.r18_transconv_pixshuffle import VaeModel
+# from models.r18_transconv_pixshuffle_lrelu import VaeModel
 
 def train(cfg):
     print("# Sound Morphing VAE training script")
