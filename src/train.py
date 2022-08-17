@@ -33,7 +33,7 @@ def train(cfg):
 
     print('# Creating loss, model, optimizer')
     loss = VaeLoss(rec_weight=cfg.rec_weight, kld_weight=cfg.kld_weight)
-    model = VaeModel(loss=loss, lspace_size=cfg.lspace_size)
+    model = VaeModel(loss=loss, fc_hidden1=cfg.fc_hidden1, fc_hidden2=cfg.fc_hidden2, fc_hidden3=cfg.fc_hidden3, lspace_size=cfg.lspace_size)
     optimizer = torch.optim.Adam(model.parameters(), lr=cfg.start_lr)
     chart_dependencies(model, input_shape=(cfg.batch_size, 1, cfg.n_mels, n_timeframes))
     print(model.get_infos())
@@ -186,10 +186,13 @@ if __name__ == "__main__":
         'epochs': 50,
         'val_every': 10,
         # model
+        'fc_hidden1': 512,
+        'fc_hidden2': 1024,
+        'fc_hidden3': 4096,
         'lspace_size': 256,
         # loss
         'rec_weight': 1.0,
-        'kld_weight': 1.0,
+        'kld_weight': 0.01,
         'ce_weigth': 1.0,
     })
     train(cfg)
