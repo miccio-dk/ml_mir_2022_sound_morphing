@@ -1,14 +1,12 @@
-import os
 import sys
 import math
 import wandb
 import torch
 import pandas as pd
-import matplotlib.pyplot as plt
-import librosa.display as lrd
 
 from tqdm import tqdm
-from utils import Bunch, set_seed, get_preprocessing, get_dataloader, chart_dependencies, get_now
+from utils import (Bunch, set_seed, get_preprocessing, get_dataloader, chart_dependencies, 
+        get_now, store_checkpoint, plot_reconstructions, plot_latentspace)
 from dataset import NsynthDataset
 from model import VaeModel
 from loss import VaeLoss
@@ -17,19 +15,23 @@ from loss import VaeLoss
 def train(cfg):
     print("# Sound Morphing VAE training script")
     print("# Configutation: ", cfg.__dict__)
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
     set_seed(cfg.seed)
     if cfg.num_workers > 0:
         torch.set_num_threads(cfg.num_workers)
 
     print('# Creating preprocessing, datasets, dataloaders')
-    preproc_train = get_preprocessing(n_mels=cfg.n_mels, train=True, data_mean=cfg.data_mean, data_std=cfg.data_std, log_transform=True)
-    preproc_valid = get_preprocessing(n_mels=cfg.n_mels, train=False, data_mean=cfg.data_mean, data_std=cfg.data_std, log_transform=True)
-    print(preproc_train)
-    ds_train = NsynthDataset('/home/rmiccini/stanford_mir2/data/nsynth-train', sr=cfg.sr, duration=cfg.duration, pitches=[60], transform=preproc_train)
-    ds_valid = NsynthDataset('/home/rmiccini/stanford_mir2/data/nsynth-valid', sr=cfg.sr, duration=cfg.duration, pitches=[60], transform=preproc_valid)
+    preproc_train = get_preprocessing(n_mels=cfg.n_mels, data_mean=cfg.data_mean, data_std=cfg.data_std, log_transform=True, train=True)
+    preproc_valid = get_preprocessing(n_mels=cfg.n_mels, data_mean=cfg.data_mean, data_std=cfg.data_std, log_transform=True, train=False)
+    ds_train = NsynthDataset('/home/rmiccini/stanford_mir2/data/nsynth-train', sr=cfg.sr, duration=cfg.duration, pitches=[60], transform=preproc_train, label='onehot')
+    ds_valid = NsynthDataset('/home/rmiccini/stanford_mir2/data/nsynth-valid', sr=cfg.sr, duration=cfg.duration, pitches=[60], transform=preproc_valid, label='full')
     dl_train = get_dataloader(ds_train, batch_size=cfg.batch_size, num_workers=cfg.num_workers, seed=cfg.seed, shuffle=True)
     dl_valid = get_dataloader(ds_valid, batch_size=cfg.batch_size, num_workers=cfg.num_workers, seed=cfg.seed, shuffle=False)
     *_, n_timeframes = ds_train[0][0].shape
+    n_classes = ds_train.get_n_classes()
+    print(preproc_train)
+    print(f'Training: {len(ds_train)} datapoints, {len(dl_train)} batches, {n_classes} classes')
+    print(f'Validation: {len(ds_valid)} datapoints, {len(dl_valid)} batches')
 
     print('# Creating loss, model, optimizer')
     loss = VaeLoss(rec_weight=cfg.rec_weight, kld_weight=cfg.kld_weight)
@@ -49,7 +51,6 @@ def train(cfg):
     wandb_run.watch(model, log='all')
 
     print('# Starting training loop')
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
     training_loop(
         epochs=cfg.epochs,
         model=model,
@@ -57,6 +58,17 @@ def train(cfg):
         dl_train=dl_train,
         dl_valid=dl_valid,
         val_every=cfg.val_every,
+        device=device,
+        wandb_run=wandb_run,
+    )
+
+    print('# Starting testing')
+    ds_test = NsynthDataset('/home/rmiccini/stanford_mir2/data/nsynth-test', sr=cfg.sr, duration=cfg.duration, pitches=[60], transform=preproc_valid, label='full')
+    dl_test = get_dataloader(ds_test, batch_size=cfg.batch_size, num_workers=cfg.num_workers, seed=cfg.seed, shuffle=False)
+    print(f'Testing: {len(ds_test)} datapoints, {len(dl_test)} batches')
+    test(
+        model=model,
+        dl_test=dl_test,
         device=device,
         wandb_run=wandb_run,
     )
@@ -80,7 +92,7 @@ def train_one_epoch(model, dl_train, optimizer, current_epoch, total_epochs, dev
     for x, label in tqdm(dl_train, desc=f"Training epoch {current_epoch}/{total_epochs}"):
         label = label.to(device)
         x = x.to(device)
-        x_reconst, losses = model(x, label=label)
+        x_reconst, mu, logvar, z, losses = model(x, label=label)
         loss = losses[0]
         epoch_loss += loss.detach().cpu().numpy()
         epoch_loss_rec += losses[1].detach().cpu().numpy()
@@ -111,20 +123,24 @@ def validate(model, dl_valid, current_epoch, total_epochs, device='cpu', wandb_r
     model.eval()
     # For each batch
     step = 1
+    all_labels, all_mu = [], []
     epoch_loss, epoch_loss_rec, epoch_loss_kld, epoch_loss_ce = 0, 0, 0, 0
-    for i, (x, label) in enumerate(tqdm(dl_valid, desc=f"Validation epoch {current_epoch}/{total_epochs}", colour="blue")):
-        label = label.to(device)
+    for i, (x, labels) in enumerate(tqdm(dl_valid, desc=f"Validation epoch {current_epoch}/{total_epochs}", colour="blue")):
         x = x.to(device)
-        x_reconst, losses = model(x, label=label)
+        x_reconst, mu, logvar, z, losses = model(x, label=[])
         if i == 0:
             reconstructrions_figure_path = plot_reconstructions(x, x_reconst, current_epoch=current_epoch)
-            latentspace_figure_path = plot_latentspace(x, x_reconst, current_epoch=current_epoch)
         loss = losses[0]
         epoch_loss += loss.detach().cpu().numpy()
         epoch_loss_rec += losses[1].detach().cpu().numpy()
         epoch_loss_kld += losses[2].detach().cpu().numpy()
         epoch_loss_ce += losses[3].detach().cpu().numpy() if len(losses) == 4 else 0
+        all_labels.append(labels)
+        all_mu.append(mu)
         step += 1
+    all_labels = pd.concat([pd.DataFrame(l) for l in all_labels])
+    all_mu = torch.vstack(all_mu)
+    latentspace_figure_path = plot_latentspace(all_mu.detach().cpu().numpy(), all_labels, current_epoch=current_epoch)
     # Get metrics and return them
     metrics = dict()
     dl_len = len(dl_valid)
@@ -133,40 +149,47 @@ def validate(model, dl_valid, current_epoch, total_epochs, device='cpu', wandb_r
     metrics["valid/avg_loss_kld"] = epoch_loss_kld / dl_len
     metrics["valid/avg_loss_ce"] = epoch_loss_ce / dl_len
     metrics["valid/reconstructions"] = wandb.Image(reconstructrions_figure_path)
-    # metrics["valid/latent_space"] = wandb.Image(latentspace_figure_path)
+    metrics["valid/latent_space"] = wandb.Image(latentspace_figure_path)
     print('Validation metrics: \n', pd.Series(metrics))
     if wandb_run is not None:
         wandb_run.log(metrics, step=current_epoch)
 
 
-def store_checkpoint(model, optimizer, current_epoch):
-    ckpt_path = f'checkpoints/epoch_{current_epoch:04}.pth'
-    torch.save({
-        'epoch': current_epoch,
-        'model_state_dict': model.state_dict(),
-        'optimizer_state_dict': optimizer.state_dict(),
-    }, ckpt_path)
-    print(f'# Stored checkpoint at {ckpt_path}')
+def test(model, dl_test, device='cpu', wandb_run=None):
+    model.eval()
+    # For each batch
+    step = 1
+    all_labels, all_mu = [], []
+    epoch_loss, epoch_loss_rec, epoch_loss_kld, epoch_loss_ce = 0, 0, 0, 0
+    for i, (x, labels) in enumerate(tqdm(dl_test, desc=f"Testing", colour="green")):
+        x = x.to(device)
+        x_reconst, mu, logvar, z, losses = model(x, label=[])
+        if i == 0:
+            reconstructrions_figure_path = plot_reconstructions(x, x_reconst, current_epoch=0)
+        loss = losses[0]
+        epoch_loss += loss.detach().cpu().numpy()
+        epoch_loss_rec += losses[1].detach().cpu().numpy()
+        epoch_loss_kld += losses[2].detach().cpu().numpy()
+        epoch_loss_ce += losses[3].detach().cpu().numpy() if len(losses) == 4 else 0
+        all_labels.append(labels)
+        all_mu.append(mu)
+        step += 1
+    all_labels = pd.concat([pd.DataFrame(l) for l in all_labels])
+    all_mu = torch.vstack(all_mu)
+    latentspace_figure_path = plot_latentspace(all_mu.detach().cpu().numpy(), all_labels, current_epoch=0)
+    # Get metrics and return them
+    metrics = dict()
+    dl_len = len(dl_test)
+    metrics["test/avg_loss"] = epoch_loss / dl_len
+    metrics["test/avg_loss_rec"] = epoch_loss_rec / dl_len
+    metrics["test/avg_loss_kld"] = epoch_loss_kld / dl_len
+    metrics["test/avg_loss_ce"] = epoch_loss_ce / dl_len
+    metrics["test/reconstructions"] = wandb.Image(reconstructrions_figure_path)
+    metrics["test/latent_space"] = wandb.Image(latentspace_figure_path)
+    print('Testing metrics: \n', pd.Series(metrics))
+    if wandb_run is not None:
+        wandb_run.log(metrics)
 
-
-def plot_reconstructions(x_true, x_reconst, current_epoch, sr=16000):
-    batch_size = x_true.shape[0]
-    nrows = 4
-    ncols = batch_size // nrows
-    fig, axs = plt.subplots(nrows, ncols, figsize=(16, 8))
-    for i, (ax, xt, xh) in enumerate(zip(axs.flatten(), x_true, x_reconst)):
-        xx = torch.dstack([xt, xh]).squeeze(0).detach().cpu().numpy()
-        lrd.specshow(xx, ax=ax, cmap='magma', sr=16000, n_fft=1024, win_length=1024, hop_length=256)
-        ax.set_title(f'{i}')
-    fig.tight_layout()
-    figure_path = os.path.join('figures', f'epoch_{current_epoch:04}.png')
-    plt.savefig(figure_path)
-    plt.close(fig)
-    return figure_path
-
-
-def plot_latentspace(x_true, x_reconst, current_epoch):
-    return ''
 
 
 if __name__ == "__main__":
@@ -183,8 +206,8 @@ if __name__ == "__main__":
         'data_std': 38.5646,  # in db
         # training
         'start_lr': 1e-4,
-        'epochs': 50,
-        'val_every': 10,
+        'epochs': 4,
+        'val_every': 2,
         # model
         'fc_hidden1': 512,
         'fc_hidden2': 1024,

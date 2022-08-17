@@ -149,8 +149,8 @@ class VaeModel(nn.Module):
         x_reconst = self.decode(z)
         if label is not None:
             losses = self.loss(x, x_reconst, mu, logvar, z, label)
-            return x_reconst, losses
-        return x_reconst
+            return x_reconst, mu, logvar, z, losses
+        return x_reconst, mu, logvar, z
 
 
     def get_infos(self):

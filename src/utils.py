@@ -1,11 +1,16 @@
+from cProfile import label
 import os
 import random
 import datetime
 import torch
 import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+import librosa.display as lrd
 from torch.utils.data import DataLoader
 from torchaudio.transforms import MelSpectrogram, AmplitudeToDB
 from torchvision.transforms import Normalize, Compose
+from sklearn.manifold import TSNE
 
 
 class Bunch(object):
@@ -57,9 +62,9 @@ def chart_dependencies(model, input_shape):
     model.eval()
     inputs = torch.randn(input_shape)
     inputs.requires_grad = True
-    outputs = model(inputs)
+    outputs = model(inputs, label=[])
     random_index = random.randint(0, input_shape[0])
-    loss = outputs[random_index].sum()
+    loss = outputs[0][random_index].sum()
     loss.backward()
     assert (torch.cat([inputs.grad[i] == 0 for i in range(input_shape[0]) if i != random_index])).all() and (
         inputs.grad[random_index] != 0
@@ -68,3 +73,42 @@ def chart_dependencies(model, input_shape):
 
 def get_now():
     return datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+
+
+def store_checkpoint(model, optimizer, current_epoch):
+    ckpt_path = f'checkpoints/epoch_{current_epoch:04}.pth'
+    torch.save({
+        'epoch': current_epoch,
+        'model_state_dict': model.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+    }, ckpt_path)
+    print(f'# Stored checkpoint at {ckpt_path}')
+
+
+def plot_reconstructions(x_true, x_reconst, current_epoch, sr=16000):
+    batch_size = x_true.shape[0]
+    nrows = 4
+    ncols = batch_size // nrows
+    fig, axs = plt.subplots(nrows, ncols, figsize=(16, 8))
+    for i, (ax, xt, xh) in enumerate(zip(axs.flatten(), x_true, x_reconst)):
+        xx = torch.dstack([xt, xh]).squeeze(0).detach().cpu().numpy()
+        lrd.specshow(xx, ax=ax, cmap='magma', sr=sr, n_fft=1024, win_length=1024, hop_length=256)
+        ax.set_title(f'{i}')
+    fig.tight_layout()
+    figure_path = os.path.join('figures', f'reconstructions_epoch_{current_epoch:04}.png')
+    plt.savefig(figure_path)
+    plt.close(fig)
+    return figure_path
+
+
+def plot_latentspace(mu, labels, current_epoch):
+    fig, ax = plt.subplots(1, 1, figsize=(16, 16))
+    mu_embs = TSNE(n_components=2, n_iter=5000).fit_transform(mu)
+    labels['emb_1'] = mu_embs[:, 0]
+    labels['emb_2'] = mu_embs[:, 1]
+    sns.scatterplot(x='emb_1', y='emb_2', hue='instrument_family_str', size='velocity', style='instrument_source_str', data=labels, ax=ax)
+    fig.tight_layout()
+    figure_path = os.path.join('figures', f'latentspace_epoch_{current_epoch:04}.png')
+    plt.savefig(figure_path)
+    plt.close(fig)
+    return figure_path

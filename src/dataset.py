@@ -40,7 +40,7 @@ class NsynthDataset(Dataset):
         if self.label == 'onehot':
             label = self.onehot[idx]
         else:
-            label = item.drop('qualities_str').to_dict()
+            label = item.drop(['qualities_str', 'qualities']).to_dict()
         return sample, label
 
     def load_data(self):
@@ -74,3 +74,6 @@ class NsynthDataset(Dataset):
             all_data.append(sample)
         all_data = torch.stack(all_data)
         return all_data.mean(), all_data.std()
+
+    def get_n_classes(self):
+        return len(self.df['instrument'].unique())

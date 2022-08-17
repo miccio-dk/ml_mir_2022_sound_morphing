@@ -12,6 +12,4 @@ python src/train.py
 
 
 ## TODO
-- plot latent space w tsne
 - reconstruct audio from specs
-- test/evaluation code
