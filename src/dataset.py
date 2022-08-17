@@ -3,6 +3,7 @@ import os.path as osp
 import torch
 import pandas as pd
 import torchaudio
+from tqdm import tqdm
 
 from torch.utils.data import Dataset
 
@@ -65,3 +66,11 @@ class NsynthDataset(Dataset):
         self.onehot = pd.get_dummies(_df['instrument']).to_numpy()
         self.df = _df
         #print(f'Data: {_df.shape}')
+    
+    def get_statistics(self):
+        all_data = []
+        for i in tqdm(range(self.__len__())):
+            sample, _ = self.__getitem__(i)
+            all_data.append(sample)
+        all_data = torch.stack(all_data)
+        return all_data.mean(), all_data.std()

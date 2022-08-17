@@ -9,12 +9,12 @@ from torchvision.models import (ResNet18_Weights, ResNet34_Weights,
 
 
 class VaeModel(nn.Module):
-    def __init__(self, loss, fc_hidden1=512, fc_hidden2=256, CNN_embed_dim=256, freeze_model=False):
+    def __init__(self, loss, fc_hidden1=512, lspace_size=256, CNN_embed_dim=256, freeze_model=False):
         super(VaeModel, self).__init__()
         self.loss = loss
 
         # Model Parameters
-        self.fc_hidden1, self.fc_hidden2, self.CNN_embed_dim = fc_hidden1, fc_hidden2, CNN_embed_dim
+        self.fc_hidden1, self.lspace_size, self.CNN_embed_dim = fc_hidden1, lspace_size, CNN_embed_dim
 
         # ENCODER
         # Load model backbone with pre-trained weights
@@ -40,17 +40,17 @@ class VaeModel(nn.Module):
         self.resnet = nn.Sequential(*modules)
         self.fc1 = nn.Linear(backbone.fc.in_features, self.fc_hidden1)
         self.bn1 = nn.BatchNorm1d(self.fc_hidden1, momentum=0.01)
-        self.fc2 = nn.Linear(self.fc_hidden1, self.fc_hidden2)
-        self.bn2 = nn.BatchNorm1d(self.fc_hidden2, momentum=0.01)
+        self.fc2 = nn.Linear(self.fc_hidden1, self.lspace_size)
+        self.bn2 = nn.BatchNorm1d(self.lspace_size, momentum=0.01)
 
         # Latent vectors mu and sigma
-        self.fc3_mu = nn.Linear(self.fc_hidden2, self.CNN_embed_dim)
-        self.fc3_logvar = nn.Linear(self.fc_hidden2, self.CNN_embed_dim)
+        self.fc3_mu = nn.Linear(self.lspace_size, self.CNN_embed_dim)
+        self.fc3_logvar = nn.Linear(self.lspace_size, self.CNN_embed_dim)
 
         # Sampling vector
-        self.fc4 = nn.Linear(self.CNN_embed_dim, self.fc_hidden2)
-        self.fc_bn4 = nn.BatchNorm1d(self.fc_hidden2)
-        self.fc5 = nn.Linear(self.fc_hidden2, 64 * 4 * 4)
+        self.fc4 = nn.Linear(self.CNN_embed_dim, self.lspace_size)
+        self.fc_bn4 = nn.BatchNorm1d(self.lspace_size)
+        self.fc5 = nn.Linear(self.lspace_size, 64 * 4 * 4)
         self.fc_bn5 = nn.BatchNorm1d(64 * 4 * 4)
         self.relu = nn.ReLU(inplace=True)
 
@@ -87,7 +87,7 @@ class VaeModel(nn.Module):
         self.convTrans8 = nn.Sequential(
             nn.PixelShuffle(upscale_factor=2),
             nn.BatchNorm2d(1, momentum=0.01),
-            nn.Sigmoid()
+            # nn.ReLU()
         )
 
     def encode(self, x):
