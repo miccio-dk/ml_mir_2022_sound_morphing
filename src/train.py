@@ -8,9 +8,11 @@ from tqdm import tqdm
 from utils import (Bunch, set_seed, get_preprocessing, get_dataloader, chart_dependencies, kld_scheduler,
         get_now, store_checkpoint, plot_reconstructions, plot_latentspace, plot_latentspace_pca)
 from dataset import NsynthDataset
-from model import VaeModel
 from loss import VaeLoss, VaeLossClasses
 
+from models.r18_transconv_pixshuffle2 import VaeModel as VaeModelPixs2
+from models.r18_transconv_pixshuffle import VaeModel as VaeModelPixs
+from models.r18_transconv_pixshuffle_lrelu import VaeModel as VaeModelLeaky
 
 def train(cfg):
     print("# Sound Morphing VAE training script")
@@ -40,8 +42,13 @@ def train(cfg):
         'vae': VaeLoss,
         'classes': VaeLossClasses,
     }[cfg.loss_type]
+    ModelClass = {
+        'pix_shuffle2': VaeModelPixs2,
+        'pix_shuffle': VaeModelPixs,
+        'leakyrelu': VaeModelLeaky
+    }[cfg.model_type]
     loss = LossClass(rec_weight=cfg.rec_weight, kld_weight=cfg.kld_weight, ce_weight=cfg.ce_weight, lspace_size=cfg.lspace_size, n_classes=n_classes)
-    model = VaeModel(loss=loss, fc_hidden1=cfg.fc_hidden1, fc_hidden2=cfg.fc_hidden2, fc_hidden3=cfg.fc_hidden3, lspace_size=cfg.lspace_size)
+    model = ModelClass(loss=loss, fc_hidden1=cfg.fc_hidden1, fc_hidden2=cfg.fc_hidden2, fc_hidden3=cfg.fc_hidden3, lspace_size=cfg.lspace_size)
     optimizer = torch.optim.Adam(model.parameters(), lr=cfg.start_lr)
     chart_dependencies(model, input_shape=(cfg.batch_size, 1, cfg.n_mels, n_timeframes))
     print(model.get_infos())
@@ -233,13 +240,14 @@ cfg = {
     'start_lr': 1e-4,
     'epochs': 100,
     'val_every': 10,
-    'loss_type': 'classes',
     # model
+    'model_type': 'leakyrelu',  # also pix_shuffle & pix_shuffle2
     'fc_hidden1': 512,
     'fc_hidden2': 1024,
-    'fc_hidden3': 896,
+    'fc_hidden3': 4096,  # 896 for pix_shuffle2
     'lspace_size': 256,
     # loss
+    'loss_type': 'classes',
     'rec_weight': 1.0,
     'kld_weight': 0.01,
     'ce_weight': 0.05,
