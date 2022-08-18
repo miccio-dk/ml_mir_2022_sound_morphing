@@ -99,7 +99,9 @@ def training_loop(epochs, model, optimizer, dl_train, dl_valid, val_every, kld_w
         train_one_epoch(model, dl_train, optimizer, current_epoch=epoch, total_epochs=epochs, device=device, wandb_run=wandb_run, enable_plot=run_validation)
         if run_validation:
             validate(model, dl_valid, current_epoch=epoch, total_epochs=epochs, device=device, wandb_run=wandb_run)
-            store_checkpoint(model, optimizer, current_epoch=epoch)
+            ckpt_path = store_checkpoint(model, optimizer, current_epoch=epoch)
+            print(f'# Stored checkpoint at {ckpt_path}')
+    wandb_run.save(ckpt_path)
             
 
 def train_one_epoch(model, dl_train, optimizer, current_epoch, total_epochs, device='cpu', wandb_run=None, enable_plot=False):

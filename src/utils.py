@@ -105,7 +105,7 @@ def store_checkpoint(model, optimizer, current_epoch):
         'model_state_dict': model.state_dict(),
         'optimizer_state_dict': optimizer.state_dict(),
     }, ckpt_path)
-    print(f'# Stored checkpoint at {ckpt_path}')
+    return ckpt_path
 
 
 def plot_reconstructions(x_true, x_reconst, labels, current_epoch, sr=16000):
