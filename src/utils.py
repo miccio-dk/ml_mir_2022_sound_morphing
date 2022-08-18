@@ -131,7 +131,7 @@ def plot_reconstructions(x_true, x_reconst, current_epoch, sr=16000):
 
 def plot_latentspace(mu, labels, current_epoch, n_iter=10000):
     fig, ax = plt.subplots(1, 1, figsize=(16, 8))
-    mu_embs = TSNE(n_components=2, n_iter=n_iter, learning_rate='auto', init='pca').fit_transform(mu)
+    mu_embs = TSNE(n_components=2, n_iter=n_iter, learning_rate='auto', init='pca', learning_rate=1e-4).fit_transform(mu)
     labels['emb_1'] = mu_embs[:, 0]
     labels['emb_2'] = mu_embs[:, 1]
     sns.scatterplot(x='emb_1', y='emb_2', hue='instrument', style='instrument', size='velocity', data=labels, ax=ax)

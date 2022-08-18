@@ -12,7 +12,6 @@ python src/train.py
 
 
 ## TODO
-- merge code
 - retrain on 4 final architectures:
   - (transpose+pixshuffle, leakyrelu) x (vae_loss, vae_loss_classes)
 - create inference script

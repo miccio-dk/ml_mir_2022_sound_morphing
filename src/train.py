@@ -23,8 +23,9 @@ def train(cfg):
         torch.set_num_threads(cfg.num_workers)
 
     print('# Creating preprocessing, datasets, dataloaders')
-    cfg.data_mean = torch.load('data_mean.pt')
-    cfg.data_std = torch.load('data_std.pt')
+    if cfg.data_mean == 'datapoint':
+        cfg.data_mean = torch.load('data_mean.pt')
+        cfg.data_std = torch.load('data_std.pt')
     preproc_train = get_preprocessing(n_mels=cfg.n_mels, data_mean=cfg.data_mean, data_std=cfg.data_std, log_transform=True, train=True)
     preproc_valid = get_preprocessing(n_mels=cfg.n_mels, data_mean=cfg.data_mean, data_std=cfg.data_std, log_transform=True, train=False)
     ds_train = NsynthDataset('/home/rmiccini/stanford_mir2/data/nsynth-train', sr=cfg.sr, duration=cfg.duration, pitches=[60], transform=preproc_train, label='both')
@@ -56,8 +57,8 @@ def train(cfg):
     run_name = get_now()
     wandb_run = wandb.init(
         name=run_name,
-        project='sound_morphing',
-        entity='miccio',
+        project='mir2_soundmorph',
+        entity='ml4mir2022',
         config=cfg.__dict__,
         job_type='train'
     )
@@ -234,8 +235,8 @@ cfg = {
     'batch_size': 32,
     'num_workers': 4,
     'n_mels': 80,
-    'data_mean': -41.5759,  # in db
-    'data_std': 38.5646,  # in db
+    'data_mean': 'datapoint',  # for overall normalization use -41.5759 (db)
+    'data_std': 'datapoint',  # for overall normalization use 38.5646 (db)
     # training
     'start_lr': 1e-4,
     'epochs': 100,
@@ -247,7 +248,7 @@ cfg = {
     'fc_hidden3': 4096,  # 896 for pix_shuffle2
     'lspace_size': 256,
     # loss
-    'loss_type': 'classes',
+    'loss_type': 'classes', # also vae
     'rec_weight': 1.0,
     'kld_weight': 0.01,
     'ce_weight': 0.05,
