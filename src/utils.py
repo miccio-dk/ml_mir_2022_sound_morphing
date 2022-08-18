@@ -136,6 +136,7 @@ def plot_latentspace(mu, labels, current_epoch, n_iter=10000):
     mu_embs = TSNE(n_components=2, n_iter=n_iter, learning_rate='auto', init='pca').fit_transform(mu)
     labels['emb_1'] = mu_embs[:, 0]
     labels['emb_2'] = mu_embs[:, 1]
+    labels = labels.sort_values('instrument')
     sns.scatterplot(x='emb_1', y='emb_2', hue='instrument', style='instrument', size='velocity', data=labels, ax=ax)
     ax.set_xlabel('')
     ax.set_ylabel('')
@@ -156,6 +157,7 @@ def plot_latentspace_pca(mu, labels, current_epoch):
     for ax, pc1, pc2 in zip(axs.flatten(), mu_embs.T[::2], mu_embs.T[1::2]):
         labels['emb_1'] = pc1
         labels['emb_2'] = pc2
+        labels = labels.sort_values('instrument')
         sns.scatterplot(x='emb_1', y='emb_2', hue='instrument', style='instrument', size='velocity', data=labels, ax=ax)
         ax.set_xlabel('')
         ax.set_ylabel('')
