@@ -5,7 +5,7 @@ import torch.nn.functional as F
 
 
 class VaeLoss(nn.Module):
-    def __init__(self, rec_weight, kld_weight):
+    def __init__(self, rec_weight, kld_weight, **kwargs):
         super(VaeLoss, self).__init__()
         self.rec_weight = rec_weight
         self.kld_weight = kld_weight
@@ -17,17 +17,19 @@ class VaeLoss(nn.Module):
         return loss, rec, kld
 
 
-class VaeLossExtended(VaeLoss):
-    def __init__(self, rec_weight, kld_weight, ce_weights, lspace_size, n_labels):
-        super(VaeLossExtended, self).__init__(rec_weight, kld_weight)
-        self.ce_weights = ce_weights
-        self.fc = nn.Linear(lspace_size, n_labels)
+class VaeLossClasses(VaeLoss):
+    def __init__(self, rec_weight, kld_weight, ce_weight, lspace_size, n_classes, **kwargs):
+        super(VaeLossClasses, self).__init__(rec_weight, kld_weight)
+        self.ce_weight = ce_weight
+        self.fc_classes = nn.Linear(lspace_size, n_classes)
 
     def forward(self, x_true, x_pred, mean, log_var, z, label_true):
-        _loss, rec, kld = super(VaeLossExtended, self).forward(x_true, x_pred, mean, log_var)
-        logits = self.fc(z)
-        ce = F.cross_entropy(logits, label_true, reduction='mean')
-        loss = _loss + ce * self.ce_weights
+        _loss, rec, kld = super(VaeLossClasses, self).forward(x_true, x_pred, mean, log_var, z, label_true)
+        if label_true is not None and len(label_true) == x_true.shape[0]:
+            logits = self.fc_classes(z)
+            ce = F.cross_entropy(logits, label_true, reduction='mean')
+        else:
+            ce = torch.Tensor([0.0]).to(x_true.device)
+        loss = _loss + ce * self.ce_weight
         return loss, rec, kld, ce
-
 

@@ -38,9 +38,13 @@ class NsynthDataset(Dataset):
         if self.transform:
             sample = self.transform(sample)
         if self.label == 'onehot':
-            label = self.onehot[idx]
-        else:
+            label = self.onehot[idx].float()
+        elif self.label == 'full':
             label = item.drop(['qualities_str', 'qualities']).to_dict()
+        elif self.label == 'both':
+            label = item.drop(['qualities_str', 'qualities']).to_dict(), self.onehot[idx]
+        else:
+            None
         return sample, label
 
     def load_data(self):
@@ -77,3 +81,11 @@ class NsynthDataset(Dataset):
 
     def get_n_classes(self):
         return len(self.df['instrument'].unique())
+
+    def get_average_datapoint(self):
+        all_data = []
+        for i in tqdm(range(self.__len__())):
+            sample, _ = self.__getitem__(i)
+            all_data.append(sample)
+        all_data = torch.stack(all_data)
+        return all_data.mean(0), all_data.std(0)

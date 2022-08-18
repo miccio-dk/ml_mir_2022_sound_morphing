@@ -1,4 +1,3 @@
-from cProfile import label
 import os
 import random
 import datetime
@@ -11,11 +10,33 @@ from torch.utils.data import DataLoader
 from torchaudio.transforms import MelSpectrogram, AmplitudeToDB
 from torchvision.transforms import Normalize, Compose
 from sklearn.manifold import TSNE
+from sklearn.decomposition import PCA
 
 
 class Bunch(object):
     def __init__(self, adict):
         self.__dict__.update(adict)
+
+
+class SpecNormalize(torch.nn.Module):
+    def __init__(self, data_mean, data_std):
+        super(SpecNormalize, self).__init__()
+        self.data_mean = data_mean
+        self.data_std = data_std
+    
+    def forward(self, x):
+        return (x - self.data_mean) / self.data_std
+
+
+class SpecDenormalize(torch.nn.Module):
+    def __init__(self, data_mean, data_std):
+        super(SpecDenormalize, self).__init__()
+        self.data_mean = data_mean
+        self.data_std = data_std
+    
+    def forward(self, x):
+        return (x * self.data_std.to(x.device)) + self.data_mean.to(x.device)
+
 
 
 def set_seed(seed):
@@ -34,12 +55,14 @@ def get_preprocessing(train, sr=16000, n_fft=1024, win_length=1024, hop_length=2
     preprocessings = [MelSpectrogram(sample_rate=sr, n_fft=n_fft, win_length=win_length, hop_length=hop_length, n_mels=n_mels)]
     if log_transform:
         preprocessings += [AmplitudeToDB()]
-    if data_mean is not None:
+    if isinstance(data_mean, torch.Tensor):
+        preprocessings += [SpecNormalize(data_mean, data_std)]
+    elif data_mean is not None:
         preprocessings += [Normalize(data_mean, data_std)]
     return Compose(preprocessings)
 
 
-def get_dataloader(dataset, batch_size, num_workers=0, shuffle=False, seed=0):
+def get_dataloader(dataset, batch_size, num_workers=0, shuffle=False, seed=0, drop_last=True):
     generator = torch.Generator()
     generator.manual_seed(seed)
     return DataLoader(
@@ -50,7 +73,7 @@ def get_dataloader(dataset, batch_size, num_workers=0, shuffle=False, seed=0):
         pin_memory=True,
         generator=generator,
         persistent_workers=num_workers > 0,
-        drop_last=True,
+        drop_last=drop_last,
     )
 
 
@@ -86,6 +109,11 @@ def store_checkpoint(model, optimizer, current_epoch):
 
 
 def plot_reconstructions(x_true, x_reconst, current_epoch, sr=16000):
+    data_mean = torch.load('data_mean.pt')
+    data_std = torch.load('data_std.pt')
+    denorm = SpecDenormalize(data_mean=data_mean, data_std=data_std)
+    x_true = denorm(x_true)
+    x_reconst = denorm(x_reconst)
     batch_size = x_true.shape[0]
     nrows = 4
     ncols = batch_size // nrows
@@ -101,14 +129,47 @@ def plot_reconstructions(x_true, x_reconst, current_epoch, sr=16000):
     return figure_path
 
 
-def plot_latentspace(mu, labels, current_epoch):
-    fig, ax = plt.subplots(1, 1, figsize=(16, 16))
-    mu_embs = TSNE(n_components=2, n_iter=5000).fit_transform(mu)
+def plot_latentspace(mu, labels, current_epoch, n_iter=10000):
+    fig, ax = plt.subplots(1, 1, figsize=(16, 8))
+    mu_embs = TSNE(n_components=2, n_iter=n_iter, learning_rate='auto', init='pca').fit_transform(mu)
     labels['emb_1'] = mu_embs[:, 0]
     labels['emb_2'] = mu_embs[:, 1]
-    sns.scatterplot(x='emb_1', y='emb_2', hue='instrument_family_str', size='velocity', style='instrument_source_str', data=labels, ax=ax)
+    sns.scatterplot(x='emb_1', y='emb_2', hue='instrument', style='instrument', size='velocity', data=labels, ax=ax)
     fig.tight_layout()
     figure_path = os.path.join('figures', f'latentspace_epoch_{current_epoch:04}.png')
     plt.savefig(figure_path)
     plt.close(fig)
     return figure_path
+
+def plot_latentspace_pca(mu, labels, current_epoch):
+    nc = min(100, mu.shape[0])
+    pca = PCA(n_components=nc)
+    mu_embs = pca.fit_transform(mu)
+    fig, axs = plt.subplots(2, 2, figsize=(16, 8))
+    for ax, pc1, pc2 in zip(axs.flatten(), mu_embs.T[::2], mu_embs.T[1::2]):
+        labels['emb_1'] = pc1
+        labels['emb_2'] = pc2
+        sns.scatterplot(x='emb_1', y='emb_2', hue='instrument', style='instrument', size='velocity', data=labels, ax=ax)
+        ax.set_xlabel('')
+        ax.set_ylabel('')
+        ax.legend().set_visible(False)
+    handles, labels = axs[-1,-1].get_legend_handles_labels()
+    fig.legend(handles, labels, loc = 'lower center', bbox_to_anchor = (0,-0,1,1), bbox_transform = fig.transFigure, ncol=8)
+    fig.tight_layout()
+    ls_figure_path = os.path.join('figures', f'latentspace_pca_epoch_{current_epoch:04}.png')
+    plt.savefig(ls_figure_path)
+    plt.close(fig)
+
+    fig, ax = plt.subplots(1, 1, figsize=(16, 8))
+    ax.plot(pca.explained_variance_ratio_)
+    ax.set_xlim([0, nc])
+    ax.set_ylim([0, 0.5])
+    fig.tight_layout()
+    ev_figure_path = os.path.join('figures', f'explvariance_pca_epoch_{current_epoch:04}.png')
+    plt.savefig(ev_figure_path)
+    plt.close(fig)
+    return ls_figure_path, ev_figure_path
+
+
+def kld_scheduler(kld_weight, kld_exp, current_epoch):
+    return (kld_weight * kld_weight) * (current_epoch ** kld_exp)

@@ -76,13 +76,13 @@ class VaeModel(nn.Module):
         # DECODER - Using PixelShuffle Layers
 
         self.convTrans5 = nn.Sequential(
-            nn.ConvTranspose2d(in_channels=256, out_channels=1024, kernel_size=(3, 3), stride=(2, 2)),
-            nn.BatchNorm2d(1024, momentum=0.01),
+            nn.ConvTranspose2d(in_channels=64, out_channels=128, kernel_size=(3, 3), stride=(2, 2)),
+            nn.BatchNorm2d(128, momentum=0.01),
             nn.ReLU(inplace=True),
         )
 
         self.convTrans6 = nn.Sequential(
-            nn.PixelShuffle(upscale_factor=2),
+            nn.ConvTranspose2d(in_channels=128, out_channels=256, kernel_size=(3, 3), stride=(2, 2)),
             nn.BatchNorm2d(256, momentum=0.01),
             nn.ReLU(inplace=True),
         )
@@ -96,7 +96,7 @@ class VaeModel(nn.Module):
         self.convTrans8 = nn.Sequential(
             nn.PixelShuffle(upscale_factor=2),
             nn.BatchNorm2d(16, momentum=0.01),
-            nn.ReLU(inplace=True),
+            # nn.ReLU(inplace=True),
         )
 
         self.convTrans9 = nn.Sequential(
@@ -106,9 +106,9 @@ class VaeModel(nn.Module):
         )
 
         self.convTrans10 = nn.Sequential(
-            nn.PixelShuffle(upscale_factor=2),
+            nn.ConvTranspose2d(in_channels=4, out_channels=1, kernel_size=(1, 1)),
             nn.BatchNorm2d(1, momentum=0.01),
-            # nn.ReLU()
+            # nn.ReLU(inplace=True),
         )
 
     def encode(self, x):
@@ -133,7 +133,7 @@ class VaeModel(nn.Module):
 
     def decode(self, z):
         x = self.relu(self.fc_bn4(self.fc4(z)))
-        x = self.relu(self.fc_bn5(self.fc5(x))).view(x.shape[0], -1, 4, 4)
+        x = self.relu(self.fc_bn5(self.fc5(x))).view(x.shape[0], -1, 2, 7)
         x = self.convTrans5(x)
         x = self.convTrans6(x)
         x = self.convTrans7(x)
