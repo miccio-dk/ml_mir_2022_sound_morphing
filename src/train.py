@@ -158,7 +158,7 @@ def validate(model, dl_valid, current_epoch, total_epochs, device='cpu', wandb_r
         x = x.to(device)
         x_reconst, mu, logvar, z, losses = model(x, label=[])
         if i == 0:
-            reconstructrions_figure_path = plot_reconstructions(x, x_reconst, current_epoch=current_epoch)
+            reconstructrions_figure_path = plot_reconstructions(x, x_reconst, labels, current_epoch=current_epoch)
         loss = losses[0]
         epoch_loss += loss.detach().cpu().numpy()
         epoch_loss_rec += losses[1].detach().cpu().numpy()
@@ -197,7 +197,7 @@ def test(model, dl_test, device='cpu', wandb_run=None):
         x = x.to(device)
         x_reconst, mu, logvar, z, losses = model(x, label=[])
         if i == 0:
-            reconstructrions_figure_path = plot_reconstructions(x, x_reconst, current_epoch=0)
+            reconstructrions_figure_path = plot_reconstructions(x, x_reconst, labels, current_epoch=0)
         loss = losses[0]
         epoch_loss += loss.detach().cpu().numpy()
         epoch_loss_rec += losses[1].detach().cpu().numpy()

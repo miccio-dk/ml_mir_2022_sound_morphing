@@ -108,7 +108,7 @@ def store_checkpoint(model, optimizer, current_epoch):
     print(f'# Stored checkpoint at {ckpt_path}')
 
 
-def plot_reconstructions(x_true, x_reconst, current_epoch, sr=16000):
+def plot_reconstructions(x_true, x_reconst, labels, current_epoch, sr=16000):
     data_mean = torch.load('data_mean.pt')
     data_std = torch.load('data_std.pt')
     denorm = SpecDenormalize(data_mean=data_mean, data_std=data_std)
@@ -117,11 +117,13 @@ def plot_reconstructions(x_true, x_reconst, current_epoch, sr=16000):
     batch_size = x_true.shape[0]
     nrows = 4
     ncols = batch_size // nrows
-    fig, axs = plt.subplots(nrows, ncols, figsize=(16, 8))
+    fig, axs = plt.subplots(nrows, ncols, figsize=(16, 8), sharex='col', sharey='row')
     for i, (ax, xt, xh) in enumerate(zip(axs.flatten(), x_true, x_reconst)):
         xx = torch.dstack([xt, xh]).squeeze(0).detach().cpu().numpy()
-        lrd.specshow(xx, ax=ax, cmap='magma', sr=sr, n_fft=1024, win_length=1024, hop_length=256)
-        ax.set_title(f'{i}')
+        lrd.specshow(xx, ax=ax, cmap='magma', sr=sr, n_fft=1024, win_length=1024, hop_length=256, x_axis='s', y_axis='mel')
+        ax.set_title(labels['instrument'][i], y=1.0, pad=-14, color='w', fontsize=10)
+        ax.set_xlabel('')
+        ax.set_ylabel('')
     fig.tight_layout()
     figure_path = os.path.join('figures', f'reconstructions_epoch_{current_epoch:04}.png')
     plt.savefig(figure_path)
@@ -131,10 +133,15 @@ def plot_reconstructions(x_true, x_reconst, current_epoch, sr=16000):
 
 def plot_latentspace(mu, labels, current_epoch, n_iter=10000):
     fig, ax = plt.subplots(1, 1, figsize=(16, 8))
-    mu_embs = TSNE(n_components=2, n_iter=n_iter, learning_rate='auto', init='pca', learning_rate=1e-4).fit_transform(mu)
+    mu_embs = TSNE(n_components=2, n_iter=n_iter, learning_rate='auto', init='pca').fit_transform(mu)
     labels['emb_1'] = mu_embs[:, 0]
     labels['emb_2'] = mu_embs[:, 1]
     sns.scatterplot(x='emb_1', y='emb_2', hue='instrument', style='instrument', size='velocity', data=labels, ax=ax)
+    ax.set_xlabel('')
+    ax.set_ylabel('')
+    ax.legend().set_visible(False)
+    handles, labels = ax.get_legend_handles_labels()
+    fig.legend(handles, labels, loc='lower center', bbox_to_anchor=(0, -0, 1, 1), bbox_transform=fig.transFigure, ncol=8)
     fig.tight_layout()
     figure_path = os.path.join('figures', f'latentspace_epoch_{current_epoch:04}.png')
     plt.savefig(figure_path)
@@ -154,7 +161,7 @@ def plot_latentspace_pca(mu, labels, current_epoch):
         ax.set_ylabel('')
         ax.legend().set_visible(False)
     handles, labels = axs[-1,-1].get_legend_handles_labels()
-    fig.legend(handles, labels, loc = 'lower center', bbox_to_anchor = (0,-0,1,1), bbox_transform = fig.transFigure, ncol=8)
+    fig.legend(handles, labels, loc='lower center', bbox_to_anchor=(0, -0, 1, 1), bbox_transform=fig.transFigure, ncol=8)
     fig.tight_layout()
     ls_figure_path = os.path.join('figures', f'latentspace_pca_epoch_{current_epoch:04}.png')
     plt.savefig(ls_figure_path)
