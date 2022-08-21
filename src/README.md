@@ -5,21 +5,18 @@
 
 
 ## Usage
-```sh
-# train
-python src/train.py
-```
+- Edit the configs in `configs.yaml`
+- run `python src/train.py`
 
 
-## TODO
-- retrain on 4 final architectures:
-  - (transpose+pixshuffle, leakyrelu) x (vae_loss, vae_loss_classes)
-- create inference script
-  - generate audio from random points in latent space
-  - generate N samples between two sample (encode samples -> interpolate z -> decode z)
-- presentation
-  - intro (problem statement, background on VAE, previous works)
-  - method (training framework, model architecture, dataset, preprocessing/augmentation)
-  - results (latent space: pca/tsne, reconstructed examples gif, audio samples)
-  - future work
-  - conclusions
+## Submit TODO
+- Also try:
+  - augmentations (specaugment + noise)
+  - ...
+- Comprehensive related works
+  - highlight originality and novelty aspects (model, applications, etc..)
+- Thorough evaluation
+  - qualitate & quantitative
+  - highlight metrics and motivations
+  - comparison with baseline 
+- Provide audio samples and repo

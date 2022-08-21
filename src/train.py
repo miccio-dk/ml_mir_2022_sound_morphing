@@ -5,7 +5,7 @@ import torch
 import pandas as pd
 
 from tqdm import tqdm
-from utils import (Bunch, set_seed, get_preprocessing, get_dataloader, chart_dependencies, kld_scheduler,
+from utils import (load_configs, set_seed, get_preprocessing, get_dataloader, chart_dependencies, kld_scheduler,
         get_now, store_checkpoint, plot_reconstructions, plot_latentspace, plot_latentspace_pca)
 from dataset import NsynthDataset
 from loss import VaeLoss, VaeLossClasses
@@ -28,8 +28,8 @@ def train(cfg):
         cfg.data_std = torch.load('data_std.pt')
     preproc_train = get_preprocessing(n_mels=cfg.n_mels, data_mean=cfg.data_mean, data_std=cfg.data_std, log_transform=True, train=True)
     preproc_valid = get_preprocessing(n_mels=cfg.n_mels, data_mean=cfg.data_mean, data_std=cfg.data_std, log_transform=True, train=False)
-    ds_train = NsynthDataset('/home/rmiccini/stanford_mir2/data/nsynth-train', sr=cfg.sr, duration=cfg.duration, pitches=[60], transform=preproc_train, label='both')
-    ds_valid = NsynthDataset('/home/rmiccini/stanford_mir2/data/nsynth-valid', sr=cfg.sr, duration=cfg.duration, pitches=[60], transform=preproc_valid, label='full')
+    ds_train = NsynthDataset(cfg.datapath_train, sr=cfg.sr, duration=cfg.duration, pitches=[60], transform=preproc_train, label='both')
+    ds_valid = NsynthDataset(cfg.datapath_valid, sr=cfg.sr, duration=cfg.duration, pitches=[60], transform=preproc_valid, label='full')
     dl_train = get_dataloader(ds_train, batch_size=cfg.batch_size, num_workers=cfg.num_workers, seed=cfg.seed, shuffle=True)
     dl_valid = get_dataloader(ds_valid, batch_size=cfg.batch_size, num_workers=cfg.num_workers, seed=cfg.seed, shuffle=False)
     *_, n_timeframes = ds_train[0][0].shape
@@ -79,7 +79,7 @@ def train(cfg):
     )
 
     print('# Starting testing')
-    ds_test = NsynthDataset('/home/rmiccini/stanford_mir2/data/nsynth-test', sr=cfg.sr, duration=cfg.duration, pitches=[60], transform=preproc_valid, label='full')
+    ds_test = NsynthDataset(cfg.datapath_test, sr=cfg.sr, duration=cfg.duration, pitches=[60], transform=preproc_valid, label='full')
     dl_test = get_dataloader(ds_test, batch_size=cfg.batch_size, num_workers=cfg.num_workers, seed=cfg.seed, shuffle=False, drop_last=False)
     print(f'Testing: {len(ds_test)} datapoints, {len(dl_test)} batches')
     test(
@@ -228,34 +228,6 @@ def test(model, dl_test, device='cpu', wandb_run=None):
         wandb_run.log(metrics)
 
 
-cfg = {
-    # general
-    'seed': 42,
-    # data
-    'sr': 16000,
-    'duration': 4,
-    'batch_size': 32,
-    'num_workers': 4,
-    'n_mels': 80,
-    'data_mean': 'datapoint',  # for overall normalization use -41.5759 (db)
-    'data_std': 'datapoint',  # for overall normalization use 38.5646 (db)
-    # training
-    'start_lr': 1e-4,
-    'epochs': 100,
-    'val_every': 10,
-    # model
-    'model_type': 'leakyrelu',  # also pix_shuffle & pix_shuffle2
-    'fc_hidden1': 512,
-    'fc_hidden2': 1024,
-    'fc_hidden3': 4096,  # 896 for pix_shuffle2
-    'lspace_size': 256,
-    # loss
-    'loss_type': 'classes', # also vae
-    'rec_weight': 1.0,
-    'kld_weight': 0.01,
-    'ce_weight': 0.05,
-    'kld_exp': 1.2,
-}
-
 if __name__ == "__main__":
-    train(Bunch(cfg))
+    cfg = load_configs()
+    train(cfg)

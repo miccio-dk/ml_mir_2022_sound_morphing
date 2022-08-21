@@ -1,13 +1,16 @@
 import os
 import random
 import datetime
+import yaml
 import torch
+import torchaudio
 import numpy as np
+import librosa as lr
 import seaborn as sns
 import matplotlib.pyplot as plt
 import librosa.display as lrd
 from torch.utils.data import DataLoader
-from torchaudio.transforms import MelSpectrogram, AmplitudeToDB
+from torchaudio.transforms import MelSpectrogram, AmplitudeToDB, InverseMelScale, GriffinLim
 from torchvision.transforms import Normalize, Compose
 from sklearn.manifold import TSNE
 from sklearn.decomposition import PCA
@@ -38,6 +41,31 @@ class SpecDenormalize(torch.nn.Module):
         return (x * self.data_std.to(x.device)) + self.data_mean.to(x.device)
 
 
+class DBToPower(torch.nn.Module):
+    def __init__(self):
+        super(DBToPower, self).__init__()
+    
+    def forward(self, x):
+        return torchaudio.functional.DB_to_amplitude(x, ref=1.0, power=1)
+
+
+class MelToAudio(torch.nn.Module):
+    def __init__(self, sr=16000, n_fft=1024, win_length=1024, hop_length=256, n_mels=80):
+        super(MelToAudio, self).__init__()
+        self.imel = InverseMelScale(sample_rate=sr, n_stft=n_fft // 2 + 1, n_mels=n_mels)
+        self.ispec = GriffinLim(n_fft=n_fft, win_length=win_length, hop_length=hop_length)
+        
+    def forward(self, x):
+        x = self.imel(x)
+        x = self.ispec(x)
+        return x
+
+
+def load_configs(**kwargs):
+    with open("configs.yaml", "r") as fp:
+        cfg = yaml.load(fp, Loader=yaml.Loader)
+    return Bunch({**cfg, **kwargs})
+
 
 def set_seed(seed):
     """
@@ -60,6 +88,16 @@ def get_preprocessing(train, sr=16000, n_fft=1024, win_length=1024, hop_length=2
     elif data_mean is not None:
         preprocessings += [Normalize(data_mean, data_std)]
     return Compose(preprocessings)
+
+
+def get_postprocessing(train, sr=16000, n_fft=1024, win_length=1024, hop_length=256, n_mels=80, data_mean=None, data_std=None, log_transform=False):
+    postprocessings = []
+    if isinstance(data_mean, torch.Tensor):
+        postprocessings += [SpecDenormalize(data_mean, data_std)]
+    if log_transform:
+        postprocessings += [DBToPower()]
+    postprocessings += [MelToAudio(sr=sr, n_fft=n_fft, win_length=win_length, hop_length=hop_length, n_mels=n_mels)]
+    return Compose(postprocessings)
 
 
 def get_dataloader(dataset, batch_size, num_workers=0, shuffle=False, seed=0, drop_last=True):
