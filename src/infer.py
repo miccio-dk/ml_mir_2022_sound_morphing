@@ -14,6 +14,8 @@ from utils import load_configs, set_seed, get_preprocessing, get_postprocessing
 from models.r18_transconv_pixshuffle2 import VaeModel as VaeModelPixs2
 from models.r18_transconv_pixshuffle import VaeModel as VaeModelPixs
 from models.r18_transconv_pixshuffle_lrelu import VaeModel as VaeModelLeaky
+from models.r18_transconv_pixshuffle_lrelu_nomel import VaeModel as VaeModelLeakyNoMel
+
 
 
 def infer(cfg):
@@ -25,9 +27,6 @@ def infer(cfg):
         torch.set_num_threads(cfg.num_workers)
 
     print('# Creating pre- and post-processing')
-    if cfg.data_mean == 'datapoint':
-        cfg.data_mean = torch.load('data_mean.pt')
-        cfg.data_std = torch.load('data_std.pt')
     preproc = get_preprocessing(n_mels=cfg.n_mels, data_mean=cfg.data_mean, data_std=cfg.data_std, log_transform=True, train=False)
     postproc = get_postprocessing(n_mels=cfg.n_mels, data_mean=cfg.data_mean, data_std=cfg.data_std, log_transform=True, train=False)
     print(preproc)
@@ -38,7 +37,8 @@ def infer(cfg):
     ModelClass = {
         'pix_shuffle2': VaeModelPixs2,
         'pix_shuffle': VaeModelPixs,
-        'leakyrelu': VaeModelLeaky
+        'leakyrelu': VaeModelLeaky,
+        'leakyrelu_nomel': VaeModelLeakyNoMel,
     }[cfg.model_type]
     model = ModelClass(loss=None, fc_hidden1=cfg.fc_hidden1, fc_hidden2=cfg.fc_hidden2, fc_hidden3=cfg.fc_hidden3, lspace_size=cfg.lspace_size)
     state_dict = torch.load(cfg.ckpt_path, map_location=device)
@@ -132,6 +132,7 @@ if __name__ == "__main__":
     parser.add_argument('-b', '--path2', type=str, required='interpolate' in sys.argv)
     parser.add_argument('-n', '--n_samples', type=int, default=16)
     parser.add_argument('-o', '--output_dir', type=str, default='./outputs/')
+    parser.add_argument('-c','--configs_path', type=str, default='./configs.yaml')
     args = parser.parse_args()
     cfg = load_configs(**vars(args))
     infer(cfg)

@@ -10,10 +10,11 @@ from torch.utils.data import Dataset
 
 # generic sofa dataset
 class NsynthDataset(Dataset):
-    def __init__(self, dataset_path, transform=None, sr=16000, duration=4,
+    def __init__(self, dataset_path, transform=None, augm_transform=None, sr=16000, duration=4,
                  pitches=None, velocities=None, instrument_sources=None, instrument_families=None, label='onehot'):
         self.dataset_path = dataset_path
         self.transform = transform
+        self.augm_transform = augm_transform
         self.sr = sr
         self.duration = int(sr * duration)
         self.pitches = pitches
@@ -34,9 +35,13 @@ class NsynthDataset(Dataset):
         assert sr == self.sr
         assert sample.shape[0] == 1
         paddings = (0, self.duration - sample.shape[1])
-        sample = torch.nn.functional.pad(sample, paddings)
+        sample_clean = sample_noisy = torch.nn.functional.pad(sample, paddings)
         if self.transform:
-            sample = self.transform(sample)
+            sample_clean = self.transform(sample_clean)
+        if self.augm_transform:
+            sample_noisy = self.augm_transform(sample_noisy)
+        else:
+            sample_noisy = self.transform(sample_noisy)
         if self.label == 'onehot':
             label = self.onehot[idx].float()
         elif self.label == 'full':
@@ -45,7 +50,7 @@ class NsynthDataset(Dataset):
             label = item.drop(['qualities_str', 'qualities']).to_dict(), self.onehot[idx]
         else:
             None
-        return sample, label
+        return sample_noisy, sample_clean, label
 
     def load_data(self):
         filepath_cache = osp.join(self.dataset_path, 'examples_cache.pkl')
@@ -74,7 +79,7 @@ class NsynthDataset(Dataset):
     def get_statistics(self):
         all_data = []
         for i in tqdm(range(self.__len__())):
-            sample, _ = self.__getitem__(i)
+            _, sample, _ = self.__getitem__(i)
             all_data.append(sample)
         all_data = torch.stack(all_data)
         return all_data.mean(), all_data.std()
@@ -85,7 +90,7 @@ class NsynthDataset(Dataset):
     def get_average_datapoint(self):
         all_data = []
         for i in tqdm(range(self.__len__())):
-            sample, _ = self.__getitem__(i)
+            _, sample, _ = self.__getitem__(i)
             all_data.append(sample)
         all_data = torch.stack(all_data)
         return all_data.mean(0), all_data.std(0)

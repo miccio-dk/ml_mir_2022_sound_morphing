@@ -58,23 +58,35 @@ class VaeModel(VaeModelBase):
 
         # DECODER - Using Transposed Conv2d
         self.convTrans6 = nn.Sequential(
+            nn.ConvTranspose2d(in_channels=256, out_channels=128, kernel_size=(3, 3), stride=(2, 2)),
+            nn.BatchNorm2d(128, momentum=0.01),
+            nn.LeakyReLU(inplace=True),
+        )
+
+        self.convTrans7 = nn.Sequential(
             nn.ConvTranspose2d(in_channels=128, out_channels=64, kernel_size=(3, 3), stride=(2, 2)),
             nn.BatchNorm2d(64, momentum=0.01),
             nn.LeakyReLU(inplace=True),
         )
-        self.convTrans7 = nn.Sequential(
+
+        self.convTrans8 = nn.Sequential(
             nn.ConvTranspose2d(in_channels=64, out_channels=32, kernel_size=(3, 3), stride=(2, 2)),
             nn.BatchNorm2d(32, momentum=0.01),
             nn.LeakyReLU(inplace=True),
         )
+
+        self.convTrans9 = nn.Sequential(
+            nn.PixelShuffle(upscale_factor=2),
+            nn.BatchNorm2d(8, momentum=0.01),
+        )
         
-        self.convTrans8 = nn.Sequential(
-            nn.ConvTranspose2d(in_channels=32, out_channels=4, kernel_size=(3, 3), stride=(2, 2)),
+        self.convTrans10 = nn.Sequential(
+            nn.ConvTranspose2d(in_channels=8, out_channels=4, kernel_size=(3, 3), stride=(2, 2)),
             nn.BatchNorm2d(4, momentum=0.01),
             nn.LeakyReLU(inplace=True),
         )
 
-        self.convTrans9 = nn.Sequential(
+        self.convTrans11 = nn.Sequential(
             nn.PixelShuffle(upscale_factor=2),
             nn.BatchNorm2d(1, momentum=0.01),
         )
@@ -93,12 +105,14 @@ class VaeModel(VaeModelBase):
 
     def decode(self, z):
         x = self.relu(self.fc_bn4(self.fc4(z)))
-        x = self.relu(self.fc_bn5(self.fc5(x))).view(x.shape[0], -1, 4, 8)      # ([32, 256, 4, 4]) => ([32, 128, 4, 8]) => ([32, 64, 4, 16])  => 131,072
+        x = self.relu(self.fc_bn5(self.fc5(x))).view(x.shape[0], -1, 4, 4)      # ([32, 256, 4, 4]) => ([32, 128, 4, 8]) => ([32, 64, 4, 16])  => 131,072
         x = self.convTrans6(x)
         x = self.convTrans7(x)
         x = self.convTrans8(x)
         x = self.convTrans9(x)
-        x = F.interpolate(x, size=(80, 251), mode='bilinear')
+        x = self.convTrans10(x)
+        x = self.convTrans11(x)
+        x = F.interpolate(x, size=(257, 251), mode='bilinear')
         return x
 
 

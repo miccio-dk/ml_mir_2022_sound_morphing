@@ -1,20 +1,17 @@
 # ResNet18 model with TransposedConv2D + PixelShuffle Output
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.autograd import Variable
 from torchvision.models import (resnet18, resnet34,
                                 shufflenet_v2_x1_0, mobilenetv3)
 from torchvision.models import (ResNet18_Weights, ResNet34_Weights,
                                 ShuffleNet_V2_X1_0_Weights, MobileNet_V3_Small_Weights)
+from models.model_base import VaeModelBase
 
 
-class VaeModel(nn.Module):
+class VaeModel(VaeModelBase):
     def __init__(self, loss, fc_hidden1=512, fc_hidden2=256, fc_hidden3=1024, lspace_size=256, freeze_model=False):
-        super(VaeModel, self).__init__()
-        self.loss = loss
-
+        super(VaeModelBase, self).__init__(loss)
         # Model Parameters
         assert fc_hidden3 % 64 == 0
         self.fc_hidden1, self.fc_hidden2, self.fc_hidden3, self.lspace_size = fc_hidden1, fc_hidden2, fc_hidden3, lspace_size
@@ -83,7 +80,6 @@ class VaeModel(nn.Module):
     def encode(self, x):
         x = self.resnet(x)
         x = x.view(x.size(0), -1)
-
         # FC layers
         x = self.bn1(self.fc1(x))
         x = self.relu(x)
@@ -91,14 +87,6 @@ class VaeModel(nn.Module):
         x = self.relu(x)
         mu, logvar = self.fc3_mu(x), self.fc3_logvar(x)
         return mu, logvar
-
-    def reparameterize(self, mu, logvar):
-        if self.training:
-            std = logvar.mul(0.5).exp_()
-            eps = Variable(std.data.new(std.size()).normal_())
-            return eps.mul(std).add_(mu)
-        else:
-            return mu
 
     def decode(self, z):
         x = self.relu(self.fc_bn4(self.fc4(z)))
@@ -110,28 +98,6 @@ class VaeModel(nn.Module):
         x = F.interpolate(x, size=(80, 251), mode='bilinear')
         return x
 
-    def forward(self, x, label=None):
-        mu, logvar = self.encode(x)
-        z = self.reparameterize(mu, logvar)
-        x_reconst = self.decode(z)
-        if label is not None:
-            losses = self.loss(x, x_reconst, mu, logvar, z, label)
-            return x_reconst, mu, logvar, z, losses
-        return x_reconst, mu, logvar, z
-
-
-    def get_infos(self):
-        model_blocks = {
-            "Backbone": self.resnet,
-            "Loss": self.loss,
-            "Total": self,
-        }
-        info_str = "Model size:\n"
-        for name, block in model_blocks.items():
-            if block is not None:
-                n_params = sum([np.prod(p.size()) for p in block.parameters() if p.requires_grad]) / 1e6
-                info_str += f"- {name:<8}:{n_params:>6.3f}M\n"
-        return info_str
 
 
 if __name__ == "__main__":

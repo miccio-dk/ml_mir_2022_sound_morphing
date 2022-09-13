@@ -10,7 +10,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import librosa.display as lrd
 from torch.utils.data import DataLoader
-from torchaudio.transforms import MelSpectrogram, AmplitudeToDB, InverseMelScale, GriffinLim
+from torchaudio.transforms import Spectrogram, MelSpectrogram, AmplitudeToDB, InverseMelScale, GriffinLim
 from torchvision.transforms import Normalize, Compose
 from sklearn.manifold import TSNE
 from sklearn.decomposition import PCA
@@ -29,6 +29,19 @@ class SpecNormalize(torch.nn.Module):
     
     def forward(self, x):
         return (x - self.data_mean) / self.data_std
+
+
+class AddWhiteNoise(torch.nn.Module):
+    def __init__(self, db_range=(-90, -5)):
+        super(AddWhiteNoise, self).__init__()
+        self.db_range = db_range
+
+    def forward(self, x):
+        n = torch.randn(x.shape)
+        db_gain = torch.FloatTensor(1).uniform_(*self.db_range)
+        gain = torchaudio.functional.DB_to_amplitude(db_gain, ref=1, power=1)
+        n *= gain
+        return x + n
 
 
 class SpecDenormalize(torch.nn.Module):
@@ -62,7 +75,7 @@ class MelToAudio(torch.nn.Module):
 
 
 def load_configs(**kwargs):
-    with open("configs.yaml", "r") as fp:
+    with open(kwargs['configs_path'], "r") as fp:
         cfg = yaml.load(fp, Loader=yaml.Loader)
     return Bunch({**cfg, **kwargs})
 
@@ -79,13 +92,23 @@ def set_seed(seed):
     torch.backends.cudnn.benchmark = True
 
 
-def get_preprocessing(train, sr=16000, n_fft=1024, win_length=1024, hop_length=256, n_mels=80, data_mean=None, data_std=None, log_transform=False):
-    preprocessings = [MelSpectrogram(sample_rate=sr, n_fft=n_fft, win_length=win_length, hop_length=hop_length, n_mels=n_mels)]
+def get_preprocessing(train, sr=16000, n_fft=1024, win_length=1024, hop_length=256, n_mels=80, data_mean=None, data_std=None, log_transform=False, db_range=None):
+    preprocessings = []
+    if db_range is not None:
+        preprocessings += [AddWhiteNoise(db_range=db_range)]
+    if n_mels is not None:
+        preprocessings += [MelSpectrogram(sample_rate=sr, n_fft=n_fft, win_length=win_length, hop_length=hop_length, n_mels=n_mels)]
+    else:
+        preprocessings += [Spectrogram(n_fft=n_fft, win_length=win_length, hop_length=hop_length)]
     if log_transform:
         preprocessings += [AmplitudeToDB()]
-    if isinstance(data_mean, torch.Tensor):
+    if isinstance(data_mean, str):
+        assert os.path.exists(data_mean)
+        assert os.path.exists(data_std)
+        data_mean = torch.load(data_mean)
+        data_std = torch.load(data_std)
         preprocessings += [SpecNormalize(data_mean, data_std)]
-    elif data_mean is not None:
+    elif isinstance(data_mean, float):
         preprocessings += [Normalize(data_mean, data_std)]
     return Compose(preprocessings)
 
